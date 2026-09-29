@@ -4,6 +4,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var STORE_KEY = 'socialae.v1';
+  var PRESETS_KEY = 'socialae.presets';
   var SETTING_KEYS = ['engine', 'apiKey', 'whisperPath', 'whisperModel', 'ffmpegPath', 'prompt', 'language'];
   var STYLE_KEYS = Object.keys(Presets.BASE);
   var GROUPING_KEYS = ['maxWords', 'maxCharsPerLine', 'maxLines', 'maxGap', 'breakOnPunctuation'];
@@ -13,7 +14,11 @@
     source: null,     // risposta di SAE_getSources
     words: [],        // { text, start, end, breakBefore } in secondi di composizione
     comp: { width: 1080, height: 1920 },
-    fonts: {}         // postScriptName -> { family, style }
+    fonts: {},        // postScriptName -> { family, style }
+    preset: '',       // preset attivo: chiave di Presets.PRESETS o 'u:<nome>' per quelli dell'utente
+    custom: {},       // preset dell'utente: nome -> stile completo
+    frame: '',        // PNG del fotogramma della comp usato come sfondo dell'anteprima
+    zoom: false
   };
 
   /* ---------- Persistenza ---------- */
@@ -23,9 +28,18 @@
   }
 
   function save() {
-    var data = { settings: {}, style: readStyle(), words: state.words, comp: state.comp, preset: $('preset').value };
+    var data = { settings: {}, style: readStyle(), words: state.words, comp: state.comp, preset: state.preset };
     SETTING_KEYS.forEach(function (k) { data.settings[k] = $(k).value; });
     try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* storage non disponibile */ }
+  }
+
+  // I preset dell'utente stanno in una chiave separata: sopravvivono a tutto il resto.
+  function loadCustom() {
+    try { return JSON.parse(localStorage.getItem(PRESETS_KEY)) || {}; } catch (e) { return {}; }
+  }
+
+  function saveCustom() {
+    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(state.custom)); } catch (e) { /* storage non disponibile */ }
   }
 
   /* ---------- Stato UI ---------- */
@@ -87,10 +101,105 @@
   }
 
   function syncChips() {
-    var cur = $('preset').value;
     document.querySelectorAll('#preset-chips .chip').forEach(function (c) {
-      c.classList.toggle('sel', c.dataset.preset === cur);
+      c.classList.toggle('sel', c.dataset.preset === state.preset);
     });
+    $('btn-preset-delete').hidden = state.preset.indexOf('u:') !== 0;
+    if (state.preset.indexOf('u:') === 0) $('preset-name').value = state.preset.slice(2);
+  }
+
+  /* ---------- Preset ---------- */
+
+  function addChip(key, label, mine) {
+    var chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (mine ? ' mine' : '');
+    chip.dataset.preset = key;
+    chip.textContent = label;
+    chip.title = mine ? 'Preset salvato da te' : '';
+    chip.addEventListener('click', function () { applyPreset(key); });
+    $('preset-chips').appendChild(chip);
+  }
+
+  function renderChips() {
+    $('preset-chips').innerHTML = '';
+    Object.keys(Presets.PRESETS).forEach(function (k) { addChip(k, Presets.PRESETS[k].label, false); });
+    Object.keys(state.custom).sort().forEach(function (name) { addChip('u:' + name, name, true); });
+    syncChips();
+  }
+
+  function applyPreset(key) {
+    if (key.indexOf('u:') === 0) {
+      // I preset dell'utente riportano tutto, font compreso.
+      writeStyle(Object.assign({}, Presets.BASE, state.custom[key.slice(2)]));
+    } else {
+      var font = $('font').value; // quelli di serie cambiano l'aspetto, non il carattere scelto
+      writeStyle(Presets.get(key));
+      if (font) $('font').value = font;
+      updateFontNote();
+    }
+    state.preset = key;
+    syncChips();
+    save();
+    renderPages();
+    renderPreview(true);
+  }
+
+  function savePreset() {
+    var name = $('preset-name').value.trim();
+    if (!name) { setStatus('Scrivi un nome per il preset.', 'error'); $('preset-name').focus(); return; }
+    var existed = name in state.custom;
+    state.custom[name] = readStyle();
+    saveCustom();
+    state.preset = 'u:' + name;
+    renderChips();
+    save();
+    setStatus(existed ? 'Preset "' + name + '" aggiornato.' : 'Preset "' + name + '" salvato.', 'ok');
+  }
+
+  function deletePreset() {
+    var name = state.preset.slice(2);
+    if (!(name in state.custom)) return;
+    if (!window.confirm('Eliminare il preset "' + name + '"?')) return;
+    delete state.custom[name];
+    saveCustom();
+    state.preset = '';
+    $('preset-name').value = '';
+    renderChips();
+    save();
+    setStatus('Preset "' + name + '" eliminato.', 'ok');
+  }
+
+  function exportPresets() {
+    if (!Object.keys(state.custom).length) { setStatus('Non hai ancora preset salvati.', 'error'); return; }
+    var r = window.cep.fs.showSaveDialogEx('Esporta preset', '', ['json'], 'social-ae-preset.json');
+    if (r.err || !r.data) return;
+    var file = /\.json$/i.test(r.data) ? r.data : r.data + '.json';
+    try {
+      require('fs').writeFileSync(file, JSON.stringify({ socialAePresets: 1, presets: state.custom }, null, 2));
+      setStatus(Object.keys(state.custom).length + ' preset esportati.', 'ok');
+    } catch (e) { fail(e); }
+  }
+
+  function importPresets() {
+    var r = window.cep.fs.showOpenDialogEx(false, false, 'Importa preset', '', ['json']);
+    if (r.err || !r.data || !r.data.length) return;
+    try {
+      var data = JSON.parse(require('fs').readFileSync(r.data[0], 'utf8'));
+      var presets = data && data.presets;
+      if (!presets || typeof presets !== 'object') throw new Error('Il file non contiene preset di Social AE.');
+      var n = 0;
+      Object.keys(presets).forEach(function (name) {
+        var st = {};
+        // Solo le chiavi di stile conosciute: un file modificato a mano non rompe il pannello.
+        STYLE_KEYS.forEach(function (k) { if (k in presets[name]) st[k] = presets[name][k]; });
+        state.custom[name] = st;
+        n++;
+      });
+      saveCustom();
+      renderChips();
+      setStatus(n + ' preset importati.', 'ok');
+    } catch (e) { fail(e); }
   }
 
   function syncDisabled() {
@@ -284,7 +393,15 @@
     var st = readStyle();
     var box = $('preview');
     box.style.aspectRatio = state.comp.width + ' / ' + state.comp.height;
+    // Verticale: largo quanto il pannello ma non oltre 280 px, se no occupa tutta la scheda.
+    var avail = box.parentNode.clientWidth || 300;
+    box.style.width = (state.comp.height > state.comp.width ? Math.min(avail, 280) : avail) + 'px';
     var scale = box.clientWidth / state.comp.width || 0.2;
+    var canvas = $('preview-canvas');
+    canvas.style.transformOrigin = '50% ' + (st.posY * 100) + '%';
+    canvas.style.transform = state.zoom ? 'scale(1.6)' : '';
+    $('btn-zoom').textContent = state.zoom ? 'Vista intera' : 'Zoom sul testo';
+    $('preview-label').textContent = state.zoom ? 'zoom 1,6×' : 'anteprima';
     var el = $('preview-text');
     var info = fontInfo(st.font);
     el.style.fontFamily = '"' + info.family + '", "' + st.font + '", sans-serif';
@@ -494,33 +611,64 @@
     save();
   }
 
+  /* ---------- Fotogramma della comp nell'anteprima ---------- */
+
+  function setFrame(file) {
+    state.frame = file;
+    var canvas = $('preview-canvas');
+    canvas.style.backgroundImage = file
+      ? 'url("file:///' + file.replace(/\\/g, '/').replace(/^\/+/, '') + '?t=' + Date.now() + '")'
+      : '';
+    canvas.classList.toggle('has-frame', !!file);
+    $('btn-frame').textContent = file ? 'Aggiorna il fotogramma' : 'Usa il fotogramma della comp';
+    $('btn-frame-clear').hidden = !file;
+  }
+
+  // After Effects scrive il PNG in modo asincrono: si aspetta che il file compaia e smetta di crescere.
+  function waitForFile(file, timeoutMs) {
+    var fs = require('fs');
+    var t0 = Date.now();
+    var lastSize = -1;
+    return new Promise(function (resolve, reject) {
+      (function check() {
+        var size = -1;
+        try { size = fs.statSync(file).size; } catch (e) { /* non ancora creato */ }
+        if (size > 0 && size === lastSize) return resolve(file);
+        lastSize = size;
+        if (Date.now() - t0 > timeoutMs) return reject(new Error('After Effects non ha salvato il fotogramma.'));
+        setTimeout(check, 150);
+      })();
+    });
+  }
+
+  function grabFrame() {
+    var path = require('path');
+    var file = path.join(require('os').tmpdir(), 'socialae-frame-' + Date.now() + '.png');
+    setStatus('Salvo il fotogramma corrente…');
+    AE.call('SAE_saveFrame', file)
+      .then(function (res) {
+        state.comp = { width: res.width, height: res.height };
+        return waitForFile(file, 15000);
+      })
+      .then(function (f) {
+        var old = state.frame;
+        setFrame(f);
+        renderPreview(false);
+        setStatus('');
+        if (old) { try { require('fs').unlinkSync(old); } catch (e) { /* file temporaneo */ } }
+      })
+      .catch(fail);
+  }
+
   /* ---------- Avvio ---------- */
 
   function init() {
     var stored = load();
 
-    var presetSel = $('preset');
-    Object.keys(Presets.PRESETS).forEach(function (k) {
-      var opt = document.createElement('option');
-      opt.value = k;
-      opt.textContent = Presets.PRESETS[k].label;
-      presetSel.appendChild(opt);
-
-      var chip = document.createElement('button');
-      chip.type = 'button';
-      chip.className = 'chip';
-      chip.dataset.preset = k;
-      chip.textContent = Presets.PRESETS[k].label;
-      chip.addEventListener('click', function () {
-        presetSel.value = k;
-        presetSel.dispatchEvent(new Event('change'));
-      });
-      $('preset-chips').appendChild(chip);
-    });
-
+    state.custom = loadCustom();
     writeStyle(Object.assign({}, Presets.BASE, stored.style || {}));
-    presetSel.value = stored.preset || (stored.style ? '' : 'classico');
-    syncChips();
+    state.preset = stored.preset || (stored.style ? '' : 'classico');
+    renderChips();
     var settings = Object.assign({ engine: 'openai' }, stored.settings || {});
     SETTING_KEYS.forEach(function (k) { if (settings[k] !== undefined) $(k).value = settings[k]; });
     state.words = stored.words || [];
@@ -543,22 +691,19 @@
     }
     showEngine();
 
-    presetSel.addEventListener('change', function () {
-      syncChips();
-      if (!presetSel.value) return;
-      var font = $('font').value; // il font scelto resta: i preset cambiano l'aspetto, non il carattere
-      writeStyle(Presets.get(presetSel.value));
-      if (font) $('font').value = font;
-      updateFontNote();
-      save();
-      renderPages();
-      renderPreview(true);
-    });
+    $('btn-preset-save').addEventListener('click', savePreset);
+    $('preset-name').addEventListener('keydown', function (e) { if (e.key === 'Enter') savePreset(); });
+    $('btn-preset-delete').addEventListener('click', deletePreset);
+    $('btn-preset-export').addEventListener('click', exportPresets);
+    $('btn-preset-import').addEventListener('click', importPresets);
+    $('btn-zoom').addEventListener('click', function () { state.zoom = !state.zoom; renderPreview(false); });
+    $('btn-frame').addEventListener('click', grabFrame);
+    $('btn-frame-clear').addEventListener('click', function () { setFrame(''); });
 
     // Anche 'change': nelle versioni di Chromium più vecchie le checkbox non emettono 'input'.
     function onStyleChange(e) {
-      if (e.target.id === 'preset') return;
-      presetSel.value = '';
+      if (e.target.id === 'preset-name') return;
+      state.preset = '';
       syncChips();
       syncRanges();
       if (e.target.id === 'font') updateFontNote();

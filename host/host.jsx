@@ -165,6 +165,20 @@ function SAE_getSources() {
     }
 }
 
+// Salva come PNG il fotogramma sotto l'indicatore del tempo, per lo sfondo dell'anteprima.
+// La scrittura del file avviene in background: il pannello aspetta che compaia.
+function SAE_saveFrame(path) {
+    try {
+        var comp = SAE_activeComp();
+        if (!comp) return SAE_error('Apri una composizione.');
+        if (!comp.saveFrameToPng) return SAE_error('Questa versione di After Effects non sa salvare fotogrammi da script.');
+        comp.saveFrameToPng(comp.time, new File(path));
+        return SAE_stringify({ ok: true, width: comp.width, height: comp.height });
+    } catch (e) {
+        return SAE_error(e.toString());
+    }
+}
+
 // app.fonts esiste da After Effects 24.0: prima di allora il pannello usa un campo libero.
 function SAE_getFonts() {
     try {

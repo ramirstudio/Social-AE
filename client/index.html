@@ -60,16 +60,29 @@
     <section class="pane" id="pane-style">
       <div class="preview-wrap">
         <div id="preview" class="preview">
-          <div id="preview-text" class="preview-text"></div>
-          <div class="stage-foot"><span class="dot"></span>anteprima</div>
+          <div id="preview-canvas" class="preview-canvas">
+            <div id="preview-text" class="preview-text"></div>
+          </div>
+          <div class="stage-foot"><span class="dot"></span><span id="preview-label">anteprima</span></div>
         </div>
+      </div>
+      <div class="preview-tools">
+        <button id="btn-frame" class="link">Usa il fotogramma della comp</button>
+        <button id="btn-frame-clear" class="link" hidden>Togli il fotogramma</button>
+        <button id="btn-zoom" class="link">Zoom sul testo</button>
       </div>
 
       <h3>Preset</h3>
-      <select id="preset" hidden>
-        <option value="">Personalizzato</option>
-      </select>
       <div class="chips" id="preset-chips"></div>
+      <div class="preset-save">
+        <input id="preset-name" placeholder="Nome per salvare lo stile attuale" spellcheck="false" maxlength="40">
+        <button id="btn-preset-save" class="btn btn-ghost">Salva</button>
+      </div>
+      <div class="preset-tools">
+        <button id="btn-preset-delete" class="link" hidden>Elimina questo preset</button>
+        <button id="btn-preset-export" class="link">Esporta i miei preset</button>
+        <button id="btn-preset-import" class="link">Importa preset</button>
+      </div>
 
       <h3>Testo</h3>
 
