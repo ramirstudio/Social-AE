@@ -30,7 +30,7 @@ Per la trascrizione puoi scegliere tra due motori.
 
 OpenAI Whisper usa l'API a pagamento (modello `whisper-1`, pochi centesimi al minuto) e richiede una chiave API. L'audio viene compresso in MP3 mono: il limite dell'API di 25 MB corrisponde a circa un'ora di parlato. La chiave resta salvata solo nel localStorage del pannello, sul tuo computer.
 
-whisper.cpp gira in locale, gratis e senza inviare l'audio fuori. Compila o scarica [whisper.cpp](https://github.com/ggml-org/whisper.cpp), scarica un modello (per l'italiano `ggml-medium.bin` o `ggml-large-v3-turbo.bin` danno buoni risultati) e indica nelle impostazioni il percorso dell'eseguibile `whisper-cli` e del file del modello.
+whisper.cpp gira in locale, gratis e senza inviare l'audio fuori. Su Windows `install/install-whisper-windows.bat` scarica eseguibile e modello in `%USERPROFILE%\whisper` e stampa i due percorsi da incollare nelle impostazioni; senza argomenti usa il modello `small`, con `install-whisper-windows.bat medium` scarica il più preciso (1,5 GB, più lento). Compila o scarica [whisper.cpp](https://github.com/ggml-org/whisper.cpp), scarica un modello (per l'italiano `ggml-medium.bin` o `ggml-large-v3-turbo.bin` danno buoni risultati) e indica nelle impostazioni il percorso dell'eseguibile `whisper-cli` e del file del modello.
 
 Nel campo "Parole difficili" puoi scrivere nomi propri, marchi o termini tecnici: vengono passati al modello come contesto e migliorano l'ortografia di quelle parole.
 
