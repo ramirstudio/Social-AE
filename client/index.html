@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Social AE</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="tabs">
+    <button class="tab is-active" data-tab="transcript">Trascrizione</button>
+    <button class="tab" data-tab="style">Stile</button>
+    <button class="tab" data-tab="settings">Impostazioni</button>
+  </nav>
+
+  <main>
+    <section class="pane is-active" id="pane-transcript">
+      <div class="source">
+        <div id="source-info" class="source-info">Nessun layer scelto.</div>
+        <button id="btn-pick" class="btn">Usa layer selezionato</button>
+      </div>
+
+      <div class="row">
+        <label class="field">
+          <span>Lingua</span>
+          <select id="language">
+            <option value="">Automatica</option>
+            <option value="it">Italiano</option>
+            <option value="en">Inglese</option>
+            <option value="es">Spagnolo</option>
+            <option value="fr">Francese</option>
+            <option value="de">Tedesco</option>
+            <option value="pt">Portoghese</option>
+          </select>
+        </label>
+        <button id="btn-transcribe" class="btn btn-primary" disabled>Trascrivi</button>
+      </div>
+
+      <div class="transcript-tools">
+        <button id="btn-save" class="link">Salva trascrizione</button>
+        <button id="btn-load" class="link">Carica trascrizione</button>
+      </div>
+
+      <p class="hint">Doppio clic su una parola per correggerla, svuotala per eliminarla. Shift + clic forza l'inizio di un nuovo blocco da quella parola.</p>
+
+      <div id="pages" class="pages">
+        <p class="empty">La trascrizione comparirà qui, divisa nei blocchi che andranno a schermo.</p>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-style">
+      <div class="preview-wrap">
+        <div id="preview" class="preview"><div id="preview-text" class="preview-text"></div></div>
+      </div>
+
+      <label class="field">
+        <span>Preset</span>
+        <select id="preset">
+          <option value="">Personalizzato</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Font</span>
+        <input id="font" list="font-list" placeholder="Nome PostScript, es. Montserrat-Black" spellcheck="false">
+        <datalist id="font-list"></datalist>
+        <small id="font-note" class="note"></small>
+      </label>
+
+      <div class="grid">
+        <label class="field"><span>Dimensione</span><input type="number" id="fontSize" min="10" max="400"></label>
+        <label class="field"><span>Spaziatura</span><input type="number" id="tracking" min="-200" max="500" step="5"></label>
+        <label class="field"><span>Interlinea</span><input type="number" id="leading" min="0" max="600" title="0 = automatica"></label>
+        <label class="field"><span>Maiuscole</span>
+          <select id="textCase">
+            <option value="none">Come parlato</option>
+            <option value="upper">TUTTO MAIUSCOLO</option>
+            <option value="lower">tutto minuscolo</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid">
+        <label class="field"><span>Testo</span><input type="color" id="fillColor"></label>
+        <label class="field"><span>Contorno</span><input type="color" id="strokeColor"></label>
+        <label class="field"><span>Spessore contorno</span><input type="number" id="strokeWidth" min="0" max="60"></label>
+        <label class="field"><span>Posizione verticale</span><input type="range" id="posY" min="0.1" max="0.95" step="0.01"></label>
+      </div>
+
+      <h3>Parola pronunciata</h3>
+      <label class="check"><input type="checkbox" id="highlight"> Evidenzia la parola in corso</label>
+      <div class="grid">
+        <label class="field"><span>Colore evidenziazione</span><input type="color" id="highlightColor"></label>
+        <label class="field"><span>Scala parola (%)</span><input type="number" id="highlightScale" min="50" max="200"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="dimOthers"> Attenua le altre parole</label>
+      <label class="field indent"><span>Opacità parole attenuate (%)</span><input type="number" id="dimOpacity" min="0" max="100"></label>
+      <label class="check"><input type="checkbox" id="reveal"> Mostra le parole solo quando vengono dette</label>
+
+      <h3>Blocchi</h3>
+      <div class="grid">
+        <label class="field"><span>Parole per blocco</span><input type="number" id="maxWords" min="1" max="20"></label>
+        <label class="field"><span>Caratteri per riga</span><input type="number" id="maxCharsPerLine" min="4" max="60"></label>
+        <label class="field"><span>Righe massime</span><input type="number" id="maxLines" min="1" max="4"></label>
+        <label class="field"><span>Pausa che spezza (s)</span><input type="number" id="maxGap" min="0.1" max="5" step="0.1"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="breakOnPunctuation"> Vai a capo a fine frase</label>
+      <label class="check"><input type="checkbox" id="stripPunctuation"> Togli la punteggiatura</label>
+
+      <h3>Animazione ed effetti</h3>
+      <label class="check"><input type="checkbox" id="popIn"> Entrata con rimbalzo di scala</label>
+      <label class="field indent"><span>Scala iniziale (%)</span><input type="number" id="popFrom" min="0" max="150"></label>
+      <label class="check"><input type="checkbox" id="shadow"> Ombra</label>
+      <div class="grid indent">
+        <label class="field"><span>Distanza</span><input type="number" id="shadowDistance" min="0" max="100"></label>
+        <label class="field"><span>Morbidezza</span><input type="number" id="shadowSoftness" min="0" max="200"></label>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-settings">
+      <label class="field">
+        <span>Motore di trascrizione</span>
+        <select id="engine">
+          <option value="openai">OpenAI Whisper (online)</option>
+          <option value="whispercpp">whisper.cpp (in locale, gratuito)</option>
+        </select>
+      </label>
+
+      <div data-engine="openai">
+        <label class="field">
+          <span>Chiave API OpenAI</span>
+          <input type="password" id="apiKey" placeholder="sk-…" spellcheck="false">
+          <small class="note">Resta salvata solo in questo computer. L'audio viene inviato a OpenAI.</small>
+        </label>
+      </div>
+
+      <div data-engine="whispercpp">
+        <label class="field">
+          <span>Eseguibile whisper.cpp</span>
+          <span class="path-row"><input id="whisperPath" placeholder="…/whisper-cli" spellcheck="false"><button class="btn" data-browse="whisperPath">Sfoglia</button></span>
+        </label>
+        <label class="field">
+          <span>Modello (.bin)</span>
+          <span class="path-row"><input id="whisperModel" placeholder="…/ggml-medium.bin" spellcheck="false"><button class="btn" data-browse="whisperModel">Sfoglia</button></span>
+        </label>
+      </div>
+
+      <label class="field">
+        <span>ffmpeg</span>
+        <span class="path-row"><input id="ffmpegPath" placeholder="Vuoto = cerca automaticamente" spellcheck="false"><button class="btn" data-browse="ffmpegPath">Sfoglia</button></span>
+      </label>
+
+      <label class="field">
+        <span>Parole difficili</span>
+        <textarea id="prompt" rows="3" placeholder="Nomi, marchi, termini tecnici che il modello deve scrivere giusti."></textarea>
+      </label>
+    </section>
+  </main>
+
+  <footer class="bar">
+    <div id="status" class="status"></div>
+    <div class="bar-actions">
+      <label class="check small"><input type="checkbox" id="replace" checked> Sostituisci quelli esistenti</label>
+      <button id="btn-remove" class="btn">Rimuovi</button>
+      <button id="btn-generate" class="btn btn-primary" disabled>Crea sottotitoli</button>
+    </div>
+  </footer>
+
+  <script src="lib/ae.js"></script>
+  <script src="lib/captions.js"></script>
+  <script src="lib/transcribe.js"></script>
+  <script src="lib/presets.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

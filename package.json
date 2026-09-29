@@ -1,0 +1,9 @@
+{
+  "name": "social-ae",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pannello After Effects per sottotitoli in stile TikTok con evidenziazione della parola pronunciata",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
