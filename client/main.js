@@ -73,6 +73,24 @@
     });
     updateFontNote();
     syncDisabled();
+    syncRanges();
+  }
+
+  // Parte riempita dello slider e valore accanto all'etichetta.
+  function syncRanges() {
+    document.querySelectorAll('input[type=range]').forEach(function (r) {
+      var pct = (r.value - r.min) / (r.max - r.min) * 100;
+      r.style.setProperty('--fill', pct + '%');
+      var out = document.querySelector('output[for="' + r.id + '"]');
+      if (out) out.textContent = Math.round(r.value * 100) + '%';
+    });
+  }
+
+  function syncChips() {
+    var cur = $('preset').value;
+    document.querySelectorAll('#preset-chips .chip').forEach(function (c) {
+      c.classList.toggle('sel', c.dataset.preset === cur);
+    });
   }
 
   function syncDisabled() {
@@ -487,10 +505,22 @@
       opt.value = k;
       opt.textContent = Presets.PRESETS[k].label;
       presetSel.appendChild(opt);
+
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.dataset.preset = k;
+      chip.textContent = Presets.PRESETS[k].label;
+      chip.addEventListener('click', function () {
+        presetSel.value = k;
+        presetSel.dispatchEvent(new Event('change'));
+      });
+      $('preset-chips').appendChild(chip);
     });
 
     writeStyle(Object.assign({}, Presets.BASE, stored.style || {}));
     presetSel.value = stored.preset || (stored.style ? '' : 'classico');
+    syncChips();
     var settings = Object.assign({ engine: 'openai' }, stored.settings || {});
     SETTING_KEYS.forEach(function (k) { if (settings[k] !== undefined) $(k).value = settings[k]; });
     state.words = stored.words || [];
@@ -514,6 +544,7 @@
     showEngine();
 
     presetSel.addEventListener('change', function () {
+      syncChips();
       if (!presetSel.value) return;
       var font = $('font').value; // il font scelto resta: i preset cambiano l'aspetto, non il carattere
       writeStyle(Presets.get(presetSel.value));
@@ -528,6 +559,8 @@
     function onStyleChange(e) {
       if (e.target.id === 'preset') return;
       presetSel.value = '';
+      syncChips();
+      syncRanges();
       if (e.target.id === 'font') updateFontNote();
       syncDisabled();
       var regroup = GROUPING_KEYS.concat(['textCase', 'stripPunctuation']).indexOf(e.target.id) >= 0;

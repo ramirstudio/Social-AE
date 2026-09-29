@@ -6,6 +6,14 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <header class="hd">
+    <div class="hd-txt">
+      <h1>Social AE</h1>
+      <p class="hd-sub">Sottotitoli con parola attiva</p>
+    </div>
+    <span class="hd-ver">v0.3</span>
+  </header>
+
   <nav class="tabs">
     <button class="tab is-active" data-tab="transcript">Trascrizione</button>
     <button class="tab" data-tab="style">Stile</button>
@@ -16,7 +24,7 @@
     <section class="pane is-active" id="pane-transcript">
       <div class="source">
         <div id="source-info" class="source-info">Nessun audio letto.</div>
-        <button id="btn-pick" class="btn">Leggi audio</button>
+        <button id="btn-pick" class="btn btn-ghost">Leggi audio</button>
       </div>
 
       <p class="hint">Legge l'audio dei layer selezionati, anche dentro precomp e con remapping temporale. Senza selezione prende tutta la composizione.</p>
@@ -51,15 +59,19 @@
 
     <section class="pane" id="pane-style">
       <div class="preview-wrap">
-        <div id="preview" class="preview"><div id="preview-text" class="preview-text"></div></div>
+        <div id="preview" class="preview">
+          <div id="preview-text" class="preview-text"></div>
+          <div class="stage-foot"><span class="dot"></span>anteprima</div>
+        </div>
       </div>
 
-      <label class="field">
-        <span>Preset</span>
-        <select id="preset">
-          <option value="">Personalizzato</option>
-        </select>
-      </label>
+      <h3>Preset</h3>
+      <select id="preset" hidden>
+        <option value="">Personalizzato</option>
+      </select>
+      <div class="chips" id="preset-chips"></div>
+
+      <h3>Testo</h3>
 
       <label class="field">
         <span>Font</span>
@@ -85,7 +97,10 @@
         <label class="field"><span>Testo</span><input type="color" id="fillColor"></label>
         <label class="field"><span>Contorno</span><input type="color" id="strokeColor"></label>
         <label class="field"><span>Spessore contorno</span><input type="number" id="strokeWidth" min="0" max="60"></label>
-        <label class="field"><span>Posizione verticale</span><input type="range" id="posY" min="0.1" max="0.95" step="0.01"></label>
+      </div>
+      <div class="ctrl">
+        <div class="ctrl-top"><label for="posY">Posizione verticale</label><output for="posY"></output></div>
+        <input type="range" id="posY" min="0.1" max="0.95" step="0.01">
       </div>
 
       <h3>Parola pronunciata</h3>
@@ -126,6 +141,7 @@
     </section>
 
     <section class="pane" id="pane-settings">
+      <h3>Trascrizione</h3>
       <label class="field">
         <span>Motore di trascrizione</span>
         <select id="engine">
@@ -145,17 +161,17 @@
       <div data-engine="whispercpp">
         <label class="field">
           <span>Eseguibile whisper.cpp</span>
-          <span class="path-row"><input id="whisperPath" placeholder="…/whisper-cli" spellcheck="false"><button class="btn" data-browse="whisperPath">Sfoglia</button></span>
+          <span class="path-row"><input id="whisperPath" placeholder="…/whisper-cli" spellcheck="false"><button class="btn btn-ghost" data-browse="whisperPath">Sfoglia</button></span>
         </label>
         <label class="field">
           <span>Modello (.bin)</span>
-          <span class="path-row"><input id="whisperModel" placeholder="…/ggml-medium.bin" spellcheck="false"><button class="btn" data-browse="whisperModel">Sfoglia</button></span>
+          <span class="path-row"><input id="whisperModel" placeholder="…/ggml-medium.bin" spellcheck="false"><button class="btn btn-ghost" data-browse="whisperModel">Sfoglia</button></span>
         </label>
       </div>
 
       <label class="field">
         <span>ffmpeg</span>
-        <span class="path-row"><input id="ffmpegPath" placeholder="Vuoto = cerca automaticamente" spellcheck="false"><button class="btn" data-browse="ffmpegPath">Sfoglia</button></span>
+        <span class="path-row"><input id="ffmpegPath" placeholder="Vuoto = cerca automaticamente" spellcheck="false"><button class="btn btn-ghost" data-browse="ffmpegPath">Sfoglia</button></span>
       </label>
 
       <label class="field">
@@ -167,9 +183,9 @@
 
   <footer class="bar">
     <div id="status" class="status"></div>
+    <label class="check small"><input type="checkbox" id="replace" checked> Sostituisci i sottotitoli già creati</label>
     <div class="bar-actions">
-      <label class="check small"><input type="checkbox" id="replace" checked> Sostituisci quelli esistenti</label>
-      <button id="btn-remove" class="btn">Rimuovi</button>
+      <button id="btn-remove" class="btn btn-ghost">Rimuovi</button>
       <button id="btn-generate" class="btn btn-primary" disabled>Crea sottotitoli</button>
     </div>
   </footer>
