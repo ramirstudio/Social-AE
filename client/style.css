@@ -272,6 +272,21 @@ textarea { resize: vertical; }
 }
 
 .pw.is-active { opacity: 1; }
+
+.has-box .pw {
+  position: relative;
+  z-index: 0;
+}
+
+.has-box .pw.is-active::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: calc(var(--box-pad) * -0.5) calc(var(--box-pad) * -1);
+  background: var(--box);
+  opacity: var(--box-opacity);
+  border-radius: var(--box-radius);
+}
 .has-reveal .pw.is-future { visibility: hidden; }
 
 .bar {

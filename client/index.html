@@ -15,9 +15,11 @@
   <main>
     <section class="pane is-active" id="pane-transcript">
       <div class="source">
-        <div id="source-info" class="source-info">Nessun layer scelto.</div>
-        <button id="btn-pick" class="btn">Usa layer selezionato</button>
+        <div id="source-info" class="source-info">Nessun audio letto.</div>
+        <button id="btn-pick" class="btn">Leggi audio</button>
       </div>
+
+      <p class="hint">Legge l'audio dei layer selezionati, anche dentro precomp e con remapping temporale. Senza selezione prende tutta la composizione.</p>
 
       <div class="row">
         <label class="field">
@@ -95,6 +97,13 @@
       <label class="check"><input type="checkbox" id="dimOthers"> Attenua le altre parole</label>
       <label class="field indent"><span>Opacità parole attenuate (%)</span><input type="number" id="dimOpacity" min="0" max="100"></label>
       <label class="check"><input type="checkbox" id="reveal"> Mostra le parole solo quando vengono dette</label>
+      <label class="check"><input type="checkbox" id="box"> Riquadro colorato dietro la parola</label>
+      <div class="grid indent">
+        <label class="field"><span>Colore riquadro</span><input type="color" id="boxColor"></label>
+        <label class="field"><span>Opacità (%)</span><input type="number" id="boxOpacity" min="0" max="100"></label>
+        <label class="field"><span>Margine</span><input type="number" id="boxPadding" min="0" max="80"></label>
+        <label class="field"><span>Arrotondamento</span><input type="number" id="boxRadius" min="0" max="100"></label>
+      </div>
 
       <h3>Blocchi</h3>
       <div class="grid">
@@ -168,6 +177,7 @@
   <script src="lib/ae.js"></script>
   <script src="lib/captions.js"></script>
   <script src="lib/transcribe.js"></script>
+  <script src="lib/timemap.js"></script>
   <script src="lib/presets.js"></script>
   <script src="main.js"></script>
 </body>

@@ -30,7 +30,12 @@
     popFrom: 80,
     shadow: true,
     shadowDistance: 6,
-    shadowSoftness: 18
+    shadowSoftness: 18,
+    box: false,
+    boxColor: '#ff3b5c',
+    boxOpacity: 100,
+    boxPadding: 14,
+    boxRadius: 14
   };
 
   var PRESETS = {
@@ -48,6 +53,10 @@
     comparsa: {
       label: 'Parole che compaiono',
       reveal: true, maxWords: 5, maxCharsPerLine: 20, highlightScale: 100, fontSize: 78
+    },
+    riquadro: {
+      label: 'Riquadro sulla parola',
+      box: true, highlightColor: '#ffffff', highlightScale: 105, strokeWidth: 0, shadow: false
     },
     sobrio: {
       label: 'Sobrio',

@@ -1,4 +1,4 @@
-/* global AE, Captions, Transcribe, Presets */
+/* global AE, Captions, Transcribe, TimeMap, Presets */
 (function () {
   'use strict';
 
@@ -10,7 +10,7 @@
   var SAMPLE = 'Questa è un\'anteprima di come appariranno i tuoi sottotitoli'.split(' ');
 
   var state = {
-    source: null,     // risposta di SAE_getSelection
+    source: null,     // risposta di SAE_getSources
     words: [],        // { text, start, end, breakBefore } in secondi di composizione
     comp: { width: 1080, height: 1920 },
     fonts: {}         // postScriptName -> { family, style }
@@ -83,6 +83,7 @@
     $('popFrom').disabled = !st.popIn;
     $('shadowDistance').disabled = !st.shadow;
     $('shadowSoftness').disabled = !st.shadow;
+    ['boxColor', 'boxOpacity', 'boxPadding', 'boxRadius'].forEach(function (k) { $(k).disabled = !st.box; });
   }
 
   function hexToRgb(hex) {
@@ -286,6 +287,11 @@
     el.classList.toggle('has-highlight', st.highlight);
     el.classList.toggle('has-reveal', st.reveal);
     el.classList.toggle('has-pop', st.popIn);
+    el.classList.toggle('has-box', st.box);
+    el.style.setProperty('--box', st.boxColor);
+    el.style.setProperty('--box-opacity', st.boxOpacity / 100);
+    el.style.setProperty('--box-pad', (st.boxPadding * scale) + 'px');
+    el.style.setProperty('--box-radius', (st.boxRadius * scale) + 'px');
     if (rebuild) {
       preview.pages = previewPages();
       preview.pageIdx = -1;
@@ -343,56 +349,60 @@
 
   function describeSource() {
     var s = state.source;
-    if (!s) { $('source-info').textContent = 'Nessun layer scelto.'; return; }
-    $('source-info').innerHTML = '';
+    var info = $('source-info');
+    if (!s) { info.textContent = 'Nessun audio letto.'; return; }
+    var total = 0;
+    s.tracks.forEach(function (tr) {
+      tr.segments.forEach(function (seg) { total += seg[seg.length - 1][0] - seg[0][0]; });
+    });
+    info.innerHTML = '';
     var strong = document.createElement('strong');
-    strong.textContent = s.layer.name;
-    $('source-info').appendChild(strong);
-    $('source-info').appendChild(document.createTextNode(' in ' + s.comp.name + ', ' +
-      Captions.formatTime(s.layer.outPoint - s.layer.inPoint) + ' di audio'));
+    strong.textContent = s.tracks.length === 1 ? s.tracks[0].name : s.tracks.length + ' clip audio';
+    info.appendChild(strong);
+    info.appendChild(document.createTextNode(' in ' + s.comp.name + ', ' + Captions.formatTime(total) + ' di audio' +
+      (s.remap ? ', con remapping' : '')));
+    info.title = s.tracks.map(function (tr) { return tr.name; }).join('\n');
   }
 
   function pickLayer() {
-    return AE.call('SAE_getSelection').then(function (res) {
+    busy(true);
+    setStatus('Leggo i layer…');
+    return AE.call('SAE_getSources').then(function (res) {
       state.source = res;
       state.comp = { width: res.comp.width, height: res.comp.height };
       describeSource();
-      refreshButtons();
       renderPreview(false);
       save();
       setStatus('');
-    }).catch(fail);
+    }).catch(fail).then(function () { busy(false); });
   }
 
   function transcribe() {
-    var s = state.source;
-    var stretch = s.layer.stretch / 100;
-    if (stretch <= 0) { fail(new Error('Layer con tempo invertito: non supportato.')); return; }
     var settings = {};
     SETTING_KEYS.forEach(function (k) { settings[k] = $(k).value.trim(); });
-    var srcIn = Math.max(0, (s.layer.inPoint - s.layer.startTime) / stretch);
-    var srcOut = (s.layer.outPoint - s.layer.startTime) / stretch;
+    var chunks = TimeMap.planChunks(state.source.tracks);
+    var lists = [];
 
     busy(true);
-    Transcribe.transcribe({ filePath: s.layer.filePath, srcIn: srcIn, srcOut: srcOut }, settings, setStatus)
-      .then(function (res) {
+    // Un pezzo alla volta: ffmpeg e l'API non vanno sovraccaricati in parallelo.
+    var chain = Promise.resolve();
+    chunks.forEach(function (chunk, n) {
+      chain = chain.then(function () {
+        var prefix = chunks.length > 1 ? '(' + (n + 1) + ' di ' + chunks.length + ') ' : '';
+        return Transcribe.transcribe(chunk, settings, function (msg) { setStatus(prefix + msg); });
+      }).then(function (res) {
         var words = settings.engine === 'openai' ? Captions.alignPunctuation(res.words, res.text) : res.words;
-        state.words = words.map(function (w) {
-          return {
-            text: w.text,
-            start: s.layer.startTime + w.start * stretch,
-            end: s.layer.startTime + w.end * stretch
-          };
-        }).filter(function (w) {
-          return w.end > s.layer.inPoint && w.start < s.layer.outPoint;
-        });
-        save();
-        renderPages();
-        renderPreview(true);
-        setStatus(state.words.length ? state.words.length + ' parole trascritte.' : 'Nessuna parola riconosciuta.', state.words.length ? 'ok' : 'error');
-      })
-      .catch(fail)
-      .then(function () { busy(false); });
+        chunk.tracks.forEach(function (tr) { lists.push(TimeMap.mapWords(words, tr)); });
+      });
+    });
+
+    chain.then(function () {
+      state.words = TimeMap.mergeWords(lists);
+      save();
+      renderPages();
+      renderPreview(true);
+      setStatus(state.words.length ? state.words.length + ' parole trascritte.' : 'Nessuna parola riconosciuta.', state.words.length ? 'ok' : 'error');
+    }).catch(fail).then(function () { busy(false); });
   }
 
   function generate() {
@@ -400,6 +410,7 @@
     var pages = buildPages().map(function (p) {
       return {
         text: Captions.pageText(p),
+        lines: p.lines.map(function (line) { return line.map(function (i) { return p.words[i].display; }); }),
         starts: p.words.map(function (w) { return w.start; }),
         start: Math.max(0, p.start),
         end: p.end
@@ -408,7 +419,8 @@
     var hostStyle = Object.assign({}, st, {
       fillColor: hexToRgb(st.fillColor),
       strokeColor: hexToRgb(st.strokeColor),
-      highlightColor: hexToRgb(st.highlightColor)
+      highlightColor: hexToRgb(st.highlightColor),
+      boxColor: hexToRgb(st.boxColor)
     });
     busy(true);
     setStatus('Creo i layer di testo…');

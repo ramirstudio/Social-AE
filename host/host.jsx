@@ -42,35 +42,123 @@ function SAE_activeComp() {
     return (item && item instanceof CompItem) ? item : null;
 }
 
-function SAE_getSelection() {
+/* ---------- Sorgenti audio ---------- */
+
+// Tempo interno del layer (tempo del file o della precomp) a un istante della comp che lo contiene.
+function SAE_innerTime(layer, t) {
+    if (layer.timeRemapEnabled) return layer.property('ADBE Time Remapping').valueAtTime(t, false);
+    return (t - layer.startTime) * 100 / layer.stretch;
+}
+
+// Raccoglie le catene di layer [layer nella comp attiva, ..., layer con il file] che portano audio.
+function SAE_collectChains(layer, chain, out, depth) {
+    var hasAudio = false;
+    try { hasAudio = layer.hasAudio && layer.audioEnabled; } catch (e) { /* layer senza audio (testo, forme, luci) */ }
+    if (!hasAudio || depth > 12) return;
+    var src = layer.source;
+    if (src instanceof CompItem) {
+        for (var i = 1; i <= src.numLayers; i++) {
+            SAE_collectChains(src.layer(i), chain.concat([layer]), out, depth + 1);
+        }
+    } else if (src instanceof FootageItem && src.file) {
+        out.push(chain.concat([layer]));
+    }
+}
+
+// Tempo nel file per un istante della comp attiva, o null se in quel momento la clip non si vede/sente.
+function SAE_chainTime(chain, t) {
+    var cur = t;
+    for (var i = 0; i < chain.length; i++) {
+        var l = chain[i];
+        if (cur < l.inPoint || cur >= l.outPoint) return null;
+        cur = SAE_innerTime(l, cur);
+    }
+    var dur = chain[chain.length - 1].source.duration;
+    if (cur < 0 || (dur > 0 && cur > dur)) return null;
+    return cur;
+}
+
+// Toglie i punti allineati: per le clip senza remapping restano solo gli estremi.
+function SAE_simplify(seg) {
+    if (seg.length < 3) return seg;
+    var out = [seg[0]];
+    for (var i = 1; i < seg.length - 1; i++) {
+        var a = out[out.length - 1];
+        var b = seg[i];
+        var c = seg[i + 1];
+        var predicted = a[1] + (c[1] - a[1]) * (b[0] - a[0]) / (c[0] - a[0]);
+        if (Math.abs(predicted - b[1]) > 0.002) out.push(b);
+    }
+    out.push(seg[seg.length - 1]);
+    return out;
+}
+
+function SAE_sampleChain(comp, chain) {
+    var top = chain[0];
+    var step = comp.frameDuration;
+    var t0 = Math.max(0, top.inPoint);
+    var t1 = Math.min(comp.duration, top.outPoint);
+    var segments = [];
+    var cur = null;
+    var frames = Math.ceil((t1 - t0) / step);
+    for (var f = 0; f <= frames; f++) {
+        // Indice intero: sommare step a ogni giro accumula errori e fa perdere il primo fotogramma.
+        var tt = Math.min(t0 + f * step, t1 - 0.0005);
+        var s = SAE_chainTime(chain, tt);
+        if (s === null) {
+            if (cur) segments.push(SAE_simplify(cur));
+            cur = null;
+        } else {
+            if (!cur) cur = [];
+            cur.push([Math.round(tt * 10000) / 10000, Math.round(s * 10000) / 10000]);
+        }
+    }
+    if (cur) segments.push(SAE_simplify(cur));
+    return segments;
+}
+
+/*
+ * Tracce audio da trascrivere: i layer selezionati o, se non c'è selezione,
+ * tutti i layer della comp. Le precomp vengono attraversate fino ai file.
+ */
+function SAE_getSources() {
     try {
         var comp = SAE_activeComp();
-        if (!comp) return SAE_error('Apri una composizione e seleziona il layer con il parlato.');
-        if (comp.selectedLayers.length === 0) return SAE_error('Seleziona nella timeline il layer video o audio da trascrivere.');
-        var layer = comp.selectedLayers[0];
-        var src = layer.source;
-        if (!src || !(src instanceof FootageItem) || !src.file) {
-            return SAE_error('Il layer "' + layer.name + '" non è un file video/audio. Per le precomp seleziona il layer originale.');
+        if (!comp) return SAE_error('Apri una composizione.');
+        var layers = [];
+        var i;
+        if (comp.selectedLayers.length) {
+            for (i = 0; i < comp.selectedLayers.length; i++) layers.push(comp.selectedLayers[i]);
+        } else {
+            for (i = 1; i <= comp.numLayers; i++) layers.push(comp.layer(i));
         }
-        if (!src.hasAudio) return SAE_error('Il file "' + src.name + '" non ha una traccia audio.');
+        var chains = [];
+        for (i = 0; i < layers.length; i++) SAE_collectChains(layers[i], [], chains, 0);
+
+        var tracks = [];
+        var remap = false;
+        for (i = 0; i < chains.length; i++) {
+            var segs = SAE_sampleChain(comp, chains[i]);
+            if (!segs.length) continue;
+            var names = [];
+            for (var k = 0; k < chains[i].length; k++) {
+                names.push(chains[i][k].name);
+                if (chains[i][k].timeRemapEnabled) remap = true;
+            }
+            var leaf = chains[i][chains[i].length - 1];
+            tracks.push({ filePath: leaf.source.file.fsName, name: names.join(' > '), segments: segs });
+        }
+        if (!tracks.length) {
+            return SAE_error(comp.selectedLayers.length
+                ? 'Nei layer selezionati non c\'è audio attivo proveniente da un file.'
+                : 'In questa composizione non c\'è audio attivo proveniente da un file.');
+        }
         return SAE_stringify({
             ok: true,
-            comp: {
-                name: comp.name,
-                width: comp.width,
-                height: comp.height,
-                duration: comp.duration,
-                frameRate: comp.frameRate
-            },
-            layer: {
-                name: layer.name,
-                index: layer.index,
-                filePath: src.file.fsName,
-                startTime: layer.startTime,
-                inPoint: layer.inPoint,
-                outPoint: layer.outPoint,
-                stretch: layer.stretch
-            }
+            comp: { name: comp.name, width: comp.width, height: comp.height, duration: comp.duration },
+            selection: comp.selectedLayers.length > 0,
+            remap: remap,
+            tracks: tracks
         });
     } catch (e) {
         return SAE_error(e.toString());
@@ -200,6 +288,116 @@ function SAE_fontExists(ps) {
     return app.fonts.getFontsByPostScriptName(ps).length > 0;
 }
 
+/*
+ * Misura il riquadro di ogni parola nello spazio del layer di testo.
+ * After Effects non espone la posizione delle singole parole, quindi si
+ * cambia temporaneamente il testo (allineato a sinistra) e si legge
+ * sourceRectAtTime: la destra del prefisso fino alla parola meno la larghezza
+ * della parola da sola dà il suo bordo sinistro. Poi si ricentra ogni riga.
+ */
+function SAE_measureWords(layer, page) {
+    var prop = layer.property('ADBE Text Properties').property('ADBE Text Document');
+    var t = layer.inPoint;
+    var doc = prop.value;
+    var fullText = doc.text;
+    doc.justification = ParagraphJustification.LEFT_JUSTIFY;
+
+    function rect(text) {
+        doc.text = text;
+        prop.setValue(doc);
+        return layer.sourceRectAtTime(t, false);
+    }
+
+    var one = rect('H');
+    var two = rect('H\rH');
+    var lead = two.height - one.height;
+
+    var raw = [];
+    var top = Infinity;
+    var bottom = -Infinity;
+    for (var li = 0; li < page.lines.length; li++) {
+        var words = page.lines[li];
+        var lineRect = rect(words.join(' '));
+        top = Math.min(top, lineRect.top);
+        bottom = Math.max(bottom, lineRect.top + lineRect.height);
+        var lineWidth = lineRect.left + lineRect.width;
+        for (var k = 0; k < words.length; k++) {
+            var pre = rect(words.slice(0, k + 1).join(' '));
+            var right = pre.left + pre.width;
+            var left = right - rect(words[k]).width;
+            raw.push({ left: left - lineWidth / 2, right: right - lineWidth / 2, line: li });
+        }
+    }
+
+    doc.text = fullText;
+    doc.justification = ParagraphJustification.CENTER_JUSTIFY;
+    prop.setValue(doc);
+
+    var boxes = [];
+    for (var i = 0; i < raw.length; i++) {
+        var y0 = top + raw[i].line * lead;
+        var y1 = bottom + raw[i].line * lead;
+        boxes.push({
+            center: [(raw[i].left + raw[i].right) / 2, (y0 + y1) / 2],
+            size: [raw[i].right - raw[i].left, y1 - y0]
+        });
+    }
+    return boxes;
+}
+
+// Espressione che passa da un valore al successivo quando cambia parola, con un breve scivolamento.
+function SAE_stepExpr(starts, values) {
+    var s = [];
+    var v = [];
+    for (var i = 0; i < starts.length; i++) {
+        s.push(Math.round(starts[i] * 1000) / 1000);
+        v.push('[' + Math.round(values[i][0] * 10) / 10 + ',' + Math.round(values[i][1] * 10) / 10 + ']');
+    }
+    return 'var s=[' + s.join(',') + '];var v=[' + v.join(',') + '];var i=0;' +
+        'for(var k=0;k<s.length;k++){if(time>=s[k])i=k;}' +
+        'var a=v[Math.max(i-1,0)];ease(time,s[i],s[i]+0.08,a,v[i])';
+}
+
+function SAE_buildBox(comp, textLayer, page, st, boxes) {
+    var shape = comp.layers.addShape();
+    shape.name = textLayer.name + ' riquadro';
+    shape.comment = SAE_TAG;
+    shape.moveAfter(textLayer);
+    shape.inPoint = page.start;
+    shape.outPoint = page.end;
+
+    shape.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
+    var vectors = function () {
+        return shape.property('ADBE Root Vectors Group').property(1).property('ADBE Vectors Group');
+    };
+    vectors().addProperty('ADBE Vector Shape - Rect');
+    vectors().addProperty('ADBE Vector Graphic - Fill');
+
+    var grow = st.highlight ? st.highlightScale / 100 : 1;
+    var centers = [];
+    var sizes = [];
+    for (var i = 0; i < boxes.length; i++) {
+        centers.push(boxes[i].center);
+        sizes.push([boxes[i].size[0] * grow + st.boxPadding * 2, boxes[i].size[1] * grow + st.boxPadding]);
+    }
+    var rectShape = vectors().property('ADBE Vector Shape - Rect');
+    rectShape.property('ADBE Vector Rect Size').expression = SAE_stepExpr(page.starts, sizes);
+    rectShape.property('ADBE Vector Rect Position').expression = SAE_stepExpr(page.starts, centers);
+    rectShape.property('ADBE Vector Rect Roundness').setValue(st.boxRadius);
+
+    var fill = vectors().property('ADBE Vector Graphic - Fill');
+    fill.property('ADBE Vector Fill Color').setValue(st.boxColor.concat([1]));
+    fill.property('ADBE Vector Fill Opacity').setValue(st.boxOpacity);
+
+    // Imparentato al testo: le coordinate sono quelle del layer di testo e segue anche il rimbalzo.
+    shape.parent = textLayer;
+    var tr = shape.property('ADBE Transform Group');
+    tr.property('ADBE Anchor Point').setValue([0, 0]);
+    tr.property('ADBE Position').setValue([0, 0]);
+    tr.property('ADBE Scale').setValue([100, 100]);
+    tr.property('ADBE Rotate Z').setValue(0);
+}
+
 function SAE_ease(n, influence) {
     var arr = [];
     for (var i = 0; i < n; i++) arr.push(new KeyframeEase(0, influence));
@@ -215,9 +413,14 @@ function SAE_buildCaption(comp, page, st, number) {
     layer.inPoint = page.start;
     layer.outPoint = page.end;
 
+    // Il riquadro va misurato prima di aggiungere animatori ed effetti.
+    var boxes = st.box ? SAE_measureWords(layer, page) : null;
+
+    // Punto di ancoraggio fisso al centro del testo: calcolato ora, così la
+    // scala della parola attiva non fa tremare il blocco.
+    var r = layer.sourceRectAtTime(layer.inPoint, false);
     var tr = layer.property('ADBE Transform Group');
-    tr.property('ADBE Anchor Point').expression =
-        'var r=sourceRectAtTime(time,false);[r.left+r.width/2,r.top+r.height/2]';
+    tr.property('ADBE Anchor Point').setValue([r.left + r.width / 2, r.top + r.height / 2]);
     tr.property('ADBE Position').setValue([comp.width / 2, comp.height * st.posY]);
 
     // Scala di ogni parola attorno al proprio centro, non per carattere.
@@ -259,6 +462,8 @@ function SAE_buildCaption(comp, page, st, number) {
             SAE_wordIndexExpr(page.starts, 'Math.max(i,0)'),
             SAE_wordIndexExpr(page.starts, 'i<0?0:i+1'));
     }
+
+    if (boxes) SAE_buildBox(comp, layer, page, st, boxes);
 
     if (st.popIn) {
         // Riferimento ripreso dal layer: gli addProperty sugli animatori possono invalidare quelli vecchi.
