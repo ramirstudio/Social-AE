@@ -39,6 +39,29 @@
     throw new Error(name + ' non trovato. Installalo o indica il percorso nelle impostazioni.');
   }
 
+  // Dove li mette install-whisper-windows.ps1 (e dove di solito li tiene chi li installa a mano).
+  function findWhisperDefaults() {
+    var fs = node('fs');
+    var path = node('path');
+    var dir = path.join(node('os').homedir(), 'whisper');
+    var out = { exe: '', model: '' };
+    if (!fs.existsSync(dir)) return out;
+    (function walk(d, depth) {
+      fs.readdirSync(d).forEach(function (name) {
+        var full = path.join(d, name);
+        var st = fs.statSync(full);
+        if (st.isDirectory() && depth < 3) walk(full, depth + 1);
+        else if (!out.exe && /^whisper-cli(\.exe)?$/i.test(name)) out.exe = full;
+        else if (!out.exe && /^main\.exe$/i.test(name)) out.exe = full;
+        else if (/^ggml-.*\.bin$/i.test(name) && !/for-tests/.test(name)) {
+          // Si preferisce il modello più grande tra quelli scaricati.
+          if (!out.model || st.size > fs.statSync(out.model).size) out.model = full;
+        }
+      });
+    })(dir, 0);
+    return out;
+  }
+
   function run(bin, args) {
     var cp = node('child_process');
     return new Promise(function (resolve, reject) {
@@ -157,7 +180,14 @@
     var useApi = settings.engine === 'openai';
     if (useApi && !settings.apiKey) return Promise.reject(new Error('Inserisci la chiave API OpenAI nelle impostazioni.'));
     if (!useApi && (!settings.whisperPath || !settings.whisperModel)) {
-      return Promise.reject(new Error('Indica eseguibile e modello di whisper.cpp nelle impostazioni.'));
+      var found = findWhisperDefaults();
+      settings = Object.assign({}, settings, {
+        whisperPath: settings.whisperPath || found.exe,
+        whisperModel: settings.whisperModel || found.model
+      });
+    }
+    if (!useApi && (!settings.whisperPath || !settings.whisperModel)) {
+      return Promise.reject(new Error('whisper.cpp non trovato in ' + node('os').homedir() + '\\whisper. Lancia install-whisper-windows.bat oppure indica i percorsi nelle impostazioni.'));
     }
 
     status('Estraggo l\'audio…');
@@ -188,6 +218,7 @@
 
   return {
     findBinary: findBinary,
+    findWhisperDefaults: findWhisperDefaults,
     extractAudio: extractAudio,
     parseOpenAIResponse: parseOpenAIResponse,
     parseWhisperCppJson: parseWhisperCppJson,
