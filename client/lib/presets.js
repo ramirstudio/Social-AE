@@ -25,7 +25,7 @@
     maxLines: 2,
     maxGap: 0.6,
     breakOnPunctuation: true,
-    stripPunctuation: true,
+    stripPunctuation: false,
     popIn: true,
     popFrom: 80,
     shadow: true,
